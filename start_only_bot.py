@@ -12,7 +12,7 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 # 🎯 Your links
 INVITE_LINK = "https://t.me/+pCkQCqhHoOFlZmMx"
-VIDEO_SRC   = "https://dl.dropboxusercontent.com/scl/fi/kuu1vlp9ch9gobwutiz2x/teaser.mp4?rlkey=1ujfyulzf9ty0eg0bjcqhpc6u&st=j5nt38b4&raw=1"
+VIDEO_SRC   = "teaser.mp4"
 
 CAPTION = (
     "350+ Models | 100,000+ Media 🔒\n"
