@@ -1,15 +1,16 @@
 # start_only_bot.py
-# Sends your teaser video + caption + JOIN button when a user taps /start.
+# Telegram bot: sends your teaser video + promo caption + JOIN button on /start.
+# Works as a Railway "Worker" service.
 
-import os, asyncio
+import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Bot token comes from Railway environment variable (keep secret, don’t hard-code!)
-BOT_TOKEN   = os.environ["BOT_TOKEN"]
+# 🔐 Set BOT_TOKEN in Railway → Service → Variables (do NOT hard-code it here)
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-# Hard-coded invite link + video source
+# 🎯 Your links
 INVITE_LINK = "https://t.me/+pCkQCqhHoOFlZmMx"
 VIDEO_SRC   = "https://www.dropbox.com/scl/fi/ivwazkb0dsuepz7au8mpm/teaser.mov?rlkey=eu90ygj5z3rs31x9awgj6hin4&st=px9dyq33&dl=1"
 
@@ -22,29 +23,23 @@ CAPTION = (
     f"{INVITE_LINK}"
 )
 
-def join_keyboard():
+def join_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join / Pay with Stars", url=INVITE_LINK)]])
 
 async def start_cmd(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_video(
-        video=VIDEO_SRC,
+        video=VIDEO_SRC,                 # Direct URL to your Dropbox file (dl=1)
         caption=CAPTION,
         reply_markup=join_keyboard(),
         parse_mode=ParseMode.HTML,
         supports_streaming=True,
     )
 
-async def main():
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_cmd))
-    await app.initialize()
-    await app.start()
-    print("✅ Bot is running on Railway. Waiting for /start…")
-    await app.updater.start_polling()
-    await app.updater.idle()
+    # Simple, blocking loop (no updater.idle needed)
+    app.run_polling(allowed_updates=None)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    main()
