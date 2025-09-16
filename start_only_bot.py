@@ -1,111 +1,167 @@
 # start_only_bot.py
-# Sends your teaser with animated custom emojis.
-# Uses VIDEO_FILE_ID (env var) for instant sends; falls back to upload once and prints the file_id.
+# Telegram bot with:
+# - /start (intro menu + private promo)
+# - /private (private promo)
+# - /public  (photo + Join button)
+# - /other   (teaser2.mp4 + Join button)
+# - /models  (loads from models.txt, deduped + alphabetized)
 
-import os, sys
+import os, sys, textwrap
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.ext import Application, CommandHandler
 from telegram.constants import MessageEntityType
 
-# ---- Config / Env ----
-BOT_TOKEN = os.environ["BOT_TOKEN"]                       # set in Railway → Service → Variables
-INVITE_LINK = "https://t.me/+pCkQCqhHoOFlZmMx"
-VIDEO_SRC = "teaser.mp4"                                  # used only if we don't have VIDEO_FILE_ID yet
-VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"                       # set this in Railway after first upload
+# ====== ENV / LINKS ======
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-# ---- Custom emoji IDs (from your RawDataBot dumps) ----
-LOCK_ID   = "5296369303661067030"   # 🔒
-FIRE_ID   = "5289722755871162900"   # 🔥 (black)
-STAR_ID   = "5267500801240092311"   # ⭐
-ROCKET_ID = "5188481279963715781"   # 🚀
-CAL_ID    = "5472026645659401564"   # 🗓
+INVITE_PRIVATE = "https://t.me/+dkvYDph8erQ0MjVh"   # Private (vault)
+INVITE_PUBLIC  = "https://t.me/+XGFZYkjSnkRlZmYx"   # Public channel
+INVITE_OTHER   = "https://t.me/+UREiVAWkCgE3Mzkx"   # Other channel
 
-# ---- Caption with normal emoji (we'll map them to animated) ----
-CAPTION = (
+# ====== MEDIA (local fallbacks) + optional file_id envs ======
+PRIVATE_VIDEO_LOCAL = "teaser.mp4"
+PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
+
+OTHER_VIDEO_LOCAL = "teaser2.mp4"
+OTHER_VIDEO_FILE_ID_ENV = "VIDEO2_FILE_ID"
+
+PUBLIC_PHOTO_LOCAL = "photo1.jpg"
+PUBLIC_PHOTO_FILE_ID_ENV = "PHOTO1_FILE_ID"
+
+# ====== CAPTIONS ======
+CAPTION_PRIVATE = (
     "🔒 350+ Models | 100,000+ Media 📁\n"
     "ALL FULLY POSTED IN PRIVATE TELEGRAM VAULT 🔥🔥🔥🔥🔥\n\n"
     "JOIN UP BELOW DONT MISS OUT! 🚀\n\n"
     "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $5 USD\n"
     "⭐ PAY WITH STARS HERE:\n\n"
-    f"{INVITE_LINK}"
+    f"{INVITE_PRIVATE}"
 )
 
+CAPTION_OTHER = (
+     "✨ Explore our Candids and Spycams channel ✨\n\n"
+    "Exclusive extras and more content 🔥\n\n"
+    f"Join now: {INVITE_OTHER}"
+)
+
+CAPTION_PUBLIC = (
+    "🌐 Public Channel\n"
+    "Free Previews, Updates & Announcements. Tap JOIN below. 👇"
+)
+
+INTRO_MENU = textwrap.dedent("""\
+               ✨ Welcome to TengokuHub Bot! ✨
+Choose a command below to explore ⬇️
+
+🔒 /private — Access the Private Vault
+🌐 /public  — Visit our Public Channel
+📂 /other   — Check out our Candid and Spycam Channel
+🗂 /models  — Browse the Private Vault Models
+""")
+
+# ====== Custom emoji IDs (for animated emojis in CAPTION_PRIVATE) ======
+LOCK_ID   = "5296369303661067030"   # 🔒
+FIRE_ID   = "5289722755871162900"   # 🔥
+STAR_ID   = "5267500801240092311"   # ⭐
+ROCKET_ID = "5188481279963715781"   # 🚀
+CAL_ID    = "5472026645659401564"   # 🗓
 EMOJI_ID_MAP = {"🔒": LOCK_ID, "🔥": FIRE_ID, "⭐": STAR_ID, "🚀": ROCKET_ID, "🗓": CAL_ID}
 
 def build_custom_emoji_entities_utf16(text: str):
-    """
-    Build caption entities with correct UTF-16 offsets/lengths so Telegram
-    accepts animated custom emojis (avoids 'utf-16 offset' errors).
-    """
     ents = []
     offset_utf16 = 0
     for ch in text:
-        ch_units = len(ch.encode("utf-16-le")) // 2  # number of UTF-16 code units
+        ch_units = len(ch.encode("utf-16-le")) // 2
         if ch in EMOJI_ID_MAP:
             ents.append(
                 MessageEntity(
                     type=MessageEntityType.CUSTOM_EMOJI,
                     offset=offset_utf16,
-                    length=ch_units,  # often 2 for emoji (surrogate pair)
+                    length=ch_units,
                     custom_emoji_id=EMOJI_ID_MAP[ch],
                 )
             )
         offset_utf16 += ch_units
     return ents
 
-def join_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("⭐ Join / Pay with Stars", url=INVITE_LINK)]]
-    )
+def kb_join(url: str, label: str = "⭐ Join"):
+    return InlineKeyboardMarkup([[InlineKeyboardButton(label, url=url)]])
 
-async def start_cmd(update, context):
-    caption_entities = build_custom_emoji_entities_utf16(CAPTION)
-
-    # 1) Try permanent VIDEO_FILE_ID first (instant for everyone; survives redeploys)
-    file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
-    if file_id:
-        try:
-            await update.message.reply_video(
-                video=file_id,
-                caption=CAPTION,
-                caption_entities=caption_entities,   # animated custom emojis
-                reply_markup=join_keyboard(),
-                supports_streaming=True,
-            )
-            return
-        except Exception as e:
-            print(f"[file_id send failed] {e} — falling back to upload", flush=True)
-
-    # 2) Upload once, then print the file_id so you can store it in Railway
+# ====== HELPERS ======
+async def send_media(update, caption, file_env, local_path, kind="video", url=None):
+    caption_entities = build_custom_emoji_entities_utf16(caption)
+    file_id = os.environ.get(file_env, "").strip()
     try:
-        with open(VIDEO_SRC, "rb") as f:
-            msg = await update.message.reply_video(
-                video=f,
-                caption=CAPTION,
-                caption_entities=caption_entities,
-                reply_markup=join_keyboard(),
-                supports_streaming=True,
-            )
-        if msg and msg.video and msg.video.file_id:
-            fid = msg.video.file_id
-            print(f"[SAVE THIS] Set {VIDEO_FILE_ID_ENV}={fid} in Railway → Service → Variables", flush=True)
+        if file_id:
+            if kind == "video":
+                return await update.message.reply_video(
+                    video=file_id, caption=caption,
+                    caption_entities=caption_entities,
+                    reply_markup=kb_join(url or INVITE_PRIVATE),
+                    supports_streaming=True,
+                )
+            elif kind == "photo":
+                return await update.message.reply_photo(
+                    photo=file_id, caption=caption,
+                    reply_markup=kb_join(url or INVITE_PUBLIC),
+                )
     except Exception as e:
-        print(f"[upload failed] {e}", flush=True)
-        # Fallback: send text with animated emojis so CTA still shows
-        try:
-            await update.message.reply_text(
-                CAPTION,
-                entities=caption_entities,
-                reply_markup=join_keyboard(),
-            )
-        except Exception as e2:
-            print(f"[send_text failed] {e2}", flush=True)
-            await update.message.reply_text(CAPTION, reply_markup=join_keyboard())
+        print(f"[{kind} file_id failed] {e}", flush=True)
 
+    try:
+        with open(local_path, "rb") as f:
+            if kind == "video":
+                msg = await update.message.reply_video(
+                    video=f, caption=caption,
+                    caption_entities=caption_entities,
+                    reply_markup=kb_join(url or INVITE_PRIVATE),
+                    supports_streaming=True,
+                )
+            else:
+                msg = await update.message.reply_photo(
+                    photo=f, caption=caption,
+                    reply_markup=kb_join(url or INVITE_PUBLIC),
+                )
+        if msg and getattr(msg, kind, None) and getattr(msg, kind).file_id:
+            fid = getattr(msg, kind).file_id
+            print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
+    except Exception as e:
+        print(f"[{kind} upload failed] {e}", flush=True)
+
+# ====== COMMANDS ======
+async def start_cmd(update, context):
+    await update.message.reply_text(INTRO_MENU)
+
+async def private_cmd(update, context):
+    await send_media(update, CAPTION_PRIVATE, PRIVATE_VIDEO_FILE_ID_ENV, PRIVATE_VIDEO_LOCAL, "video", INVITE_PRIVATE)
+
+async def other_cmd(update, context):
+    await send_media(update, CAPTION_OTHER, OTHER_VIDEO_FILE_ID_ENV, OTHER_VIDEO_LOCAL, "video", INVITE_OTHER)
+
+async def public_cmd(update, context):
+    await send_media(update, CAPTION_PUBLIC, PUBLIC_PHOTO_FILE_ID_ENV, PUBLIC_PHOTO_LOCAL, "photo", INVITE_PUBLIC)
+
+async def models_cmd(update, context):
+    try:
+        with open("models.txt", "r", encoding="utf-8") as f:
+            models = [line.strip() for line in f if line.strip()]
+        models = sorted(set(models), key=lambda s: s.lower())
+        half = len(models) // 2
+        part1, part2 = models[:half], models[half:]
+        await update.message.reply_text("📂 Private Vault Models (Part 1):\n" + ", ".join(part1))
+        await update.message.reply_text("📂 Private Vault Models (Part 2):\n" + ", ".join(part2))
+    except Exception as e:
+        await update.message.reply_text(f"[models failed] {e}")
+
+# ====== MAIN ======
 def main():
     print("Booting bot…", flush=True)
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("private", private_cmd))
+    app.add_handler(CommandHandler("other", other_cmd))
+    app.add_handler(CommandHandler("public", public_cmd))
+    app.add_handler(CommandHandler("models", models_cmd))
     print("Starting polling…", flush=True)
     app.run_polling(drop_pending_updates=True)
 
@@ -113,5 +169,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyError as e:
-        print(f"Missing env var: {e}. Did you set BOT_TOKEN on Railway?", file=sys.stderr)
+        print(f"Missing env var: {e}", file=sys.stderr)
         raise
