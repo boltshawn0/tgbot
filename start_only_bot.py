@@ -366,8 +366,7 @@ def main():
     application.add_handler(CommandHandler("models", models_cmd))
     application.add_handler(CallbackQueryHandler(crypto_cb, pattern=r"^crypto:"))
 
-    # launch background scheduler
-    application.job_queue.run_repeating(lambda ctx: None, interval=3600)  # keeps job_queue alive
+    # launch our asyncio-based reminder/expiry loop (no JobQueue needed)
     asyncio.get_event_loop().create_task(scheduler_task(application))
 
     # Start aiohttp server for Coinbase webhooks
@@ -379,11 +378,14 @@ def main():
         site = web.TCPSite(runner, "0.0.0.0", PORT)
         await site.start()
         print(f"Webhook server listening on :{PORT}/coinbase-webhook", flush=True)
+
         await application.initialize()
         await application.start()
         print("Starting polling…", flush=True)
+        # ensure no Telegram webhook is set, then poll
         await application.bot.delete_webhook(drop_pending_updates=True)
         await application.updater.start_polling()
+
         # run forever
         await asyncio.Event().wait()
 
