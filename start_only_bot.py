@@ -40,8 +40,7 @@ CAPTION_PRIVATE = (
 
 CAPTION_OTHER = (
      "✨ Explore our Candids and Spycams channel ✨\n\n"
-    "Exclusive extras and more content 🔥\n\n"
-    f"Join now: {INVITE_OTHER}"
+    "Exclusive extras and more content 🔥"
 )
 
 CAPTION_PUBLIC = (
