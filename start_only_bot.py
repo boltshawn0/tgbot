@@ -15,7 +15,7 @@ from telegram.constants import MessageEntityType
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 INVITE_PRIVATE = "https://t.me/+dkvYDph8erQ0MjVh"   # Private (vault)
-INVITE_PUBLIC  = "https://t.me/+XGFZYkjSnkRlZmYx"   # Public channel
+INVITE_PUBLIC  = "https://t.me/+hmJ_yiDtJhdjM2Qx"   # Public channel
 INVITE_OTHER   = "https://t.me/+UREiVAWkCgE3Mzkx"   # Other channel
 
 # ====== MEDIA (local fallbacks) + optional file_id envs ======
