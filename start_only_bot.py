@@ -10,6 +10,7 @@ import os, sys, textwrap
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.ext import Application, CommandHandler
 from telegram.constants import MessageEntityType
+from telegram.error import TelegramError, NetworkError, TimedOut
 
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -19,14 +20,14 @@ INVITE_PUBLIC  = "https://t.me/+hmJ_yiDtJhdjM2Qx"   # Public channel
 INVITE_OTHER   = "https://t.me/+UREiVAWkCgE3Mzkx"   # Other channel
 
 # ====== MEDIA (local fallbacks) + optional file_id envs ======
-PRIVATE_VIDEO_LOCAL = "teaser.mp4"
+PRIVATE_VIDEO_LOCAL      = "teaser.mp4"
 PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
 
-OTHER_VIDEO_LOCAL = "teaser2.mp4"
-OTHER_VIDEO_FILE_ID_ENV = "VIDEO2_FILE_ID"
+OTHER_VIDEO_LOCAL        = "teaser2.mp4"
+OTHER_VIDEO_FILE_ID_ENV   = "VIDEO2_FILE_ID"
 
-PUBLIC_PHOTO_LOCAL = "photo1.jpg"
-PUBLIC_PHOTO_FILE_ID_ENV = "PHOTO1_FILE_ID"
+PUBLIC_PHOTO_LOCAL       = "photo1.jpg"
+PUBLIC_PHOTO_FILE_ID_ENV  = "PHOTO1_FILE_ID"
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
@@ -35,11 +36,10 @@ CAPTION_PRIVATE = (
     "JOIN UP BELOW DONT MISS OUT! 🚀\n\n"
     "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $5 USD\n"
     "⭐ PAY WITH STARS HERE:\n"
-    
 )
 
 CAPTION_OTHER = (
-     "✨ Explore our Candids and Spycams channel ✨\n\n"
+    "✨ Explore our Candids and Spycams channel ✨\n\n"
     "Exclusive extras and more content 🔥"
 )
 
@@ -88,57 +88,113 @@ def kb_join(url: str, label: str = "⭐ Join"):
 
 # ====== HELPERS ======
 async def send_media(update, caption, file_env, local_path, kind="video", url=None):
+    """
+    kind: "video" or "photo"
+    Tries env file_id first; otherwise uploads local file and prints the new file_id.
+    """
     caption_entities = build_custom_emoji_entities_utf16(caption)
     file_id = os.environ.get(file_env, "").strip()
-    try:
-        if file_id:
+
+    # 1) Try cached file_id (instant)
+    if file_id:
+        try:
             if kind == "video":
                 return await update.message.reply_video(
-                    video=file_id, caption=caption,
-                    caption_entities=caption_entities,
-                    reply_markup=kb_join(url or INVITE_PRIVATE),
-                    supports_streaming=True,
-                )
-            elif kind == "photo":
-                return await update.message.reply_photo(
-                    photo=file_id, caption=caption,
-                    reply_markup=kb_join(url or INVITE_PUBLIC),
-                )
-    except Exception as e:
-        print(f"[{kind} file_id failed] {e}", flush=True)
-
-    try:
-        with open(local_path, "rb") as f:
-            if kind == "video":
-                msg = await update.message.reply_video(
-                    video=f, caption=caption,
+                    video=file_id,
+                    caption=caption,
                     caption_entities=caption_entities,
                     reply_markup=kb_join(url or INVITE_PRIVATE),
                     supports_streaming=True,
                 )
             else:
-                msg = await update.message.reply_photo(
-                    photo=f, caption=caption,
+                return await update.message.reply_photo(
+                    photo=file_id,
+                    caption=caption,
                     reply_markup=kb_join(url or INVITE_PUBLIC),
                 )
-        if msg and getattr(msg, kind, None) and getattr(msg, kind).file_id:
-            fid = getattr(msg, kind).file_id
-            print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
+        except (TimedOut, NetworkError) as e:
+            print(f"[{kind} file_id timeout] {e}", flush=True)
+        except TelegramError as e:
+            print(f"[{kind} file_id failed] {e}", flush=True)
+
+    # 2) Upload from repo file once, save file_id
+    try:
+        with open(local_path, "rb") as f:
+            if kind == "video":
+                msg = await update.message.reply_video(
+                    video=f,
+                    caption=caption,
+                    caption_entities=caption_entities,
+                    reply_markup=kb_join(url or INVITE_PRIVATE),
+                    supports_streaming=True,
+                )
+                # video returns a single object
+                if msg and msg.video and getattr(msg.video, "file_id", None):
+                    fid = msg.video.file_id
+                    print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
+            else:
+                msg = await update.message.reply_photo(
+                    photo=f,
+                    caption=caption,
+                    reply_markup=kb_join(url or INVITE_PUBLIC),
+                )
+                # photo is a tuple/list of sizes -> take the largest
+                if msg and msg.photo and len(msg.photo) > 0:
+                    fid = msg.photo[-1].file_id
+                    print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
+        return msg
+    except FileNotFoundError:
+        print(f"[{kind} upload failed] File not found: {local_path}", flush=True)
+    except (TimedOut, NetworkError) as e:
+        print(f"[{kind} upload timeout] {e}", flush=True)
+    except TelegramError as e:
+        print(f"[{kind} upload failed] {e}", flush=True)
     except Exception as e:
         print(f"[{kind} upload failed] {e}", flush=True)
+
+    # 3) Last-resort: send caption text so CTA still appears
+    try:
+        return await update.message.reply_text(
+            caption,
+            reply_markup=kb_join(url or (INVITE_PUBLIC if kind == "photo" else INVITE_PRIVATE)),
+        )
+    except Exception as e:
+        print(f"[fallback text failed] {e}", flush=True)
+        return None
 
 # ====== COMMANDS ======
 async def start_cmd(update, context):
     await update.message.reply_text(INTRO_MENU)
 
 async def private_cmd(update, context):
-    await send_media(update, CAPTION_PRIVATE, PRIVATE_VIDEO_FILE_ID_ENV, PRIVATE_VIDEO_LOCAL, "video", INVITE_PRIVATE)
+    await send_media(
+        update,
+        CAPTION_PRIVATE,
+        PRIVATE_VIDEO_FILE_ID_ENV,
+        PRIVATE_VIDEO_LOCAL,
+        kind="video",
+        url=INVITE_PRIVATE,
+    )
 
 async def other_cmd(update, context):
-    await send_media(update, CAPTION_OTHER, OTHER_VIDEO_FILE_ID_ENV, OTHER_VIDEO_LOCAL, "video", INVITE_OTHER)
+    await send_media(
+        update,
+        CAPTION_OTHER,
+        OTHER_VIDEO_FILE_ID_ENV,
+        OTHER_VIDEO_LOCAL,
+        kind="video",
+        url=INVITE_OTHER,
+    )
 
 async def public_cmd(update, context):
-    await send_media(update, CAPTION_PUBLIC, PUBLIC_PHOTO_FILE_ID_ENV, PUBLIC_PHOTO_LOCAL, "photo", INVITE_PUBLIC)
+    await send_media(
+        update,
+        CAPTION_PUBLIC,
+        PUBLIC_PHOTO_FILE_ID_ENV,
+        PUBLIC_PHOTO_LOCAL,
+        kind="photo",
+        url=INVITE_PUBLIC,
+    )
 
 async def models_cmd(update, context):
     try:
