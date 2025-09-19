@@ -15,8 +15,7 @@ from telegram.constants import MessageEntityType
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-INVITE_PRIVATE = "https://t.me/+pCkQCqhHoOFlZmMx"   # Private (vault)
-INVITE_PUBLIC  = "https://t.me/+hmJ_yiDtJhdjM2Qx"   # Public channel
+INVITE_PRIVATE = "https://t.me/+pCkQCqhHoOFlZmMx"   # Private (vault)Public channel
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Other channel
 
 # ====== MEDIA (local fallbacks) + optional file_id envs ======
@@ -46,17 +45,11 @@ CAPTION_OTHER = (
     "DON'T MISS OUT CURRENTLY 25% OFF!"
 )
 
-CAPTION_PUBLIC = (
-    "🌐 Public Channel\n"
-    "Free Previews, Updates & Announcements. Tap JOIN below. 👇"
-)
-
 INTRO_MENU = textwrap.dedent("""\
                ✨ Welcome to TengokuHub Bot! ✨
 Choose a command below to explore ⬇️
 
 🔒 /private — Access the Private Vault (25% OFF SALE!)
-🌐 /public  — Visit our Public Channel
 📂 /other   — Check out our Candid and Spycam Channel (25% OFF SALE!)
 🗂 /models  — Browse the Private Vault Models
 """)
