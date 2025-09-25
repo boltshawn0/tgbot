@@ -1,7 +1,7 @@
 # start_only_bot.py
 # Telegram bot with:
-# - /start  (shows Private Vault first, then options for other channels)
-# - /private (private promo; uses GitHub URL on first send, then caches Telegram file_id)
+# - /start  (shows Private Vault first, then options; Candids button sends teaser2.mp4)
+# - /private (private promo; uses GitHub URL first, then caches Telegram file_id)
 # - /public  (photo + Join button)
 # - /other   (teaser2.mp4 + Join button)
 # - /models  (loads from models.txt, deduped + alphabetized)
@@ -15,15 +15,12 @@ from telegram.constants import MessageEntityType
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-# Updated links you provided
 INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
 INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
-# ====== MEDIA (local fallbacks) + optional file_id envs ======
-# Private promo video (primary source = GitHub Release URL; bot will cache file_id after first send)
-PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov"
-PRIVATE_VIDEO_LOCAL = "teaser.mp4"
+# ====== MEDIA (URL first for private; local for others) + optional file_id envs ======
+PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov" # not required; only used if URL & file_id fail
 PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
 
 OTHER_VIDEO_LOCAL = "teaser2.mp4"
@@ -43,10 +40,10 @@ CAPTION_PRIVATE = (
 )
 
 CAPTION_OTHER = (
-    "✨ Explore our Candids and Spycams channel ✨\n\n"
+    "✨ Explore our Candids & Spycams ✨\n\n"
     "Exclusive extras and more content 🔥\n\n"
     "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $10 USD\n"
-    "DON'T MISS OUT CURRENTLY 25% OFF!"
+    "DON'T MISS OUT — LIMITED PROMOS RUNNING!"
 )
 
 CAPTION_PUBLIC = (
@@ -56,17 +53,14 @@ CAPTION_PUBLIC = (
     "Tap below to join the Public channel."
 )
 
-# Shown after the private message on /start
 START_FOLLOWUP = textwrap.dedent("""\
-🔥 You're in!
-
 Want more options?
 • Join Public previews (button below)
-• Join Candids & Spycams (button below)
+• See Candids & Spycams teaser now (button below)
 • Browse the model list any time with /models
 """)
 
-# ====== Custom emoji IDs (for animated emojis in CAPTION_PRIVATE) ======
+# ====== Custom emoji IDs (animated emojis in CAPTION_PRIVATE) ======
 LOCK_ID   = "5296369303661067030"   # 🔒
 FIRE_ID   = "5289722755871162900"   # 🔥
 STAR_ID   = "5267500801240092311"   # ⭐
@@ -92,7 +86,6 @@ def build_custom_emoji_entities_utf16(text: str):
     return ents
 
 def kb_private():
-    # Stars + Crypto-info buttons
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⭐ Join via Stars", url=INVITE_PRIVATE)],
         [InlineKeyboardButton("💳 Pay with Crypto ($10)", callback_data="crypto_info")]
@@ -108,33 +101,32 @@ def kb_public():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Join Public", url=INVITE_PUBLIC)]])
 
 def kb_start_options():
-    # Shown after the private promo on /start
+    # Candids button is a CALLBACK that sends teaser2.mp4
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✨ Join Public Previews", url=INVITE_PUBLIC)],
-        [InlineKeyboardButton("📂 Join Candids & Spycams", url=INVITE_OTHER)]
+        [InlineKeyboardButton("📂 Candids & Spycams (Preview)", callback_data="show_other_teaser")]
     ])
 
 # ====== HELPERS ======
 async def send_media(update: Update, caption, file_env, local_path, kind="video", markup=None, url: str | None = None):
     """
-    Sends media in priority order:
-    1) Telegram file_id from env
-    2) Direct URL (if provided)
-    3) Local file fallback
-    Logs the file_id after first upload for future speed via Telegram CDN.
+    Priority:
+      1) Telegram file_id from env
+      2) Direct URL (if provided)
+      3) Local file fallback
+    Caches and prints file_id after first successful send.
     """
     caption_entities = build_custom_emoji_entities_utf16(caption)
     file_id = os.environ.get(file_env, "").strip()
 
-    # 1) Try file_id (fastest via Telegram CDN)
+    # 1) file_id
     if file_id:
         try:
             if kind == "video":
                 return await update.message.reply_video(
                     video=file_id, caption=caption,
                     caption_entities=caption_entities,
-                    reply_markup=markup,
-                    supports_streaming=True,
+                    reply_markup=markup, supports_streaming=True,
                 )
             elif kind == "photo":
                 return await update.message.reply_photo(
@@ -144,22 +136,20 @@ async def send_media(update: Update, caption, file_env, local_path, kind="video"
         except Exception as e:
             print(f"[{kind} file_id failed] {e}", flush=True)
 
-    # 2) Try direct URL (e.g., GitHub Release asset)
+    # 2) URL
     if url:
         try:
             if kind == "video":
                 msg = await update.message.reply_video(
                     video=url, caption=caption,
                     caption_entities=caption_entities,
-                    reply_markup=markup,
-                    supports_streaming=True,
+                    reply_markup=markup, supports_streaming=True,
                 )
             else:
                 msg = await update.message.reply_photo(
                     photo=url, caption=caption,
                     reply_markup=markup,
                 )
-            # Save file_id emitted by Telegram for faster future sends
             if msg and getattr(msg, kind, None) and getattr(msg, kind).file_id:
                 fid = getattr(msg, kind).file_id
                 print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
@@ -167,15 +157,14 @@ async def send_media(update: Update, caption, file_env, local_path, kind="video"
         except Exception as e:
             print(f"[{kind} URL failed] {e}", flush=True)
 
-    # 3) Local file fallback
+    # 3) Local file
     try:
         with open(local_path, "rb") as f:
             if kind == "video":
                 msg = await update.message.reply_video(
                     video=f, caption=caption,
                     caption_entities=caption_entities,
-                    reply_markup=markup,
-                    supports_streaming=True,
+                    reply_markup=markup, supports_streaming=True,
                 )
             else:
                 msg = await update.message.reply_photo(
@@ -190,7 +179,7 @@ async def send_media(update: Update, caption, file_env, local_path, kind="video"
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1) Lead with the Private Vault promo (video from GitHub URL on first run)
+    # Lead with Private Vault promo (GitHub URL first; then cached file_id)
     await send_media(
         update,
         CAPTION_PRIVATE,
@@ -200,7 +189,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb_private(),
         url=PRIVATE_VIDEO_URL,
     )
-    # 2) Then present options for other channels
+    # Follow with options: Public (URL) + Candids (callback preview)
     await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
 
 async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -215,7 +204,8 @@ async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_media(update, CAPTION_OTHER, OTHER_VIDEO_FILE_ID_ENV, OTHER_VIDEO_LOCAL, "video", kb_other())
+    # Direct command still sends the teaser2 + join buttons
+    await send_other_teaser(update, context)
 
 async def public_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_media(update, CAPTION_PUBLIC, PUBLIC_PHOTO_FILE_ID_ENV, PUBLIC_PHOTO_LOCAL, "photo", kb_public())
@@ -245,6 +235,29 @@ async def crypto_info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await q.message.reply_text(msg, disable_web_page_preview=True, parse_mode="Markdown")
 
+async def show_other_teaser_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    # Send the Candids/Spycams teaser video + join buttons
+    await send_other_teaser(q, context)  # use the callback's message context
+
+async def send_other_teaser(target, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Sends teaser2.mp4 with CAPTION_OTHER and kb_other.
+    `target` can be an Update.message or a CallbackQuery (we'll normalize).
+    """
+    # Normalize: get a message-like object with .reply_*
+    message = getattr(target, "message", None) or target  # if target is already a message
+    await send_media(
+        message,  # works because our send_media calls update.message.reply_*
+        CAPTION_OTHER,
+        OTHER_VIDEO_FILE_ID_ENV,
+        OTHER_VIDEO_LOCAL,
+        "video",
+        kb_other(),
+        url=None,  # local or cached file_id only
+    )
+
 # ====== MAIN ======
 def main():
     print("Booting bot…", flush=True)
@@ -255,6 +268,7 @@ def main():
     app.add_handler(CommandHandler("public", public_cmd))
     app.add_handler(CommandHandler("models", models_cmd))
     app.add_handler(CallbackQueryHandler(crypto_info_cb, pattern=r"^crypto_info$"))
+    app.add_handler(CallbackQueryHandler(show_other_teaser_cb, pattern=r"^show_other_teaser$"))
     print("Starting polling…", flush=True)
     app.run_polling(drop_pending_updates=True)
 
