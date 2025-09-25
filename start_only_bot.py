@@ -25,28 +25,28 @@ PUBLIC_PHOTO_LOCAL = "photo1.jpg"
 CAPTION_PRIVATE = (
     "🔒 400+ Models | 125,000+ Media 📁\n"
     "ALL FULLY POSTED IN PRIVATE TELEGRAM VAULT 🔥🔥🔥\n\n"
-    "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $10 USD\n"
+    "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $10 USD\n\n"
     f"⭐ Join here: {INVITE_PRIVATE}"
 )
 
 CAPTION_OTHER = (
     "✨ Candids & Spycams ✨\n\n"
-    "Exclusive extras and more content 🔥\n"
+    "Exclusive extras and more content 🔥\n\n"
     f"⭐ Join here: {INVITE_OTHER}"
 )
 
 CAPTION_PUBLIC = (
     "✨ TengokuHub – Public ✨\n"
-    "Previews & teasers only. Full collection (400+ models, 125K+ media) in the Private Vault.\n"
+    "Previews & teasers only. Full collection (400+ models, 125K+ media) in the Private Vault.\n\n"
     f"⭐ Join here: {INVITE_PUBLIC}"
 )
 
 INTRO_MENU = textwrap.dedent("""\
 ✨ Welcome to TengokuHub Bot! ✨
 
-🔒 /private — Access the Private Vault (video)
-📂 /other   — Candids & Spycams (teaser2.mp4)
-📸 /public  — Public previews (photo)
+🔒 /private — Access the Private Vault
+📂 /other   — Candids & Spycams
+📸 /public  — Public previews
 🗂 /models  — Browse Models list
 """)
 
