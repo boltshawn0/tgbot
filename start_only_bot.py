@@ -21,6 +21,7 @@ INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
 # ====== MEDIA (URL first for private; local for others) + optional file_id envs ======
 PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov" # not required; only used if URL & file_id fail
+PRIVATE_VIDEO_LOCAL = "teaser.mp4"
 PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
 
 OTHER_VIDEO_LOCAL = "teaser2.mp4"
