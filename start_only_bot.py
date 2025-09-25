@@ -1,9 +1,9 @@
 # start_only_bot.py
-# Simple bot with file_id-first for instant video, URL fallback if not set.
+# Final clean version: uses VIDEO_FILE_ID (instant CDN), no logger, no URL fallback.
 
 import os, sys, textwrap
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -13,13 +13,9 @@ INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
 
 # ====== MEDIA ======
-# Fallback URL (works before you have a file_id)
-PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mp4"
-# When you capture it, set in Railway as: VIDEO_FILE_ID=BAACAg...
-VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
-
-OTHER_VIDEO_LOCAL = "teaser2.mp4"
-PUBLIC_PHOTO_LOCAL = "photo1.jpg"
+VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"   # must be set in Railway
+OTHER_VIDEO_LOCAL = "teaser2.mp4"     # make sure this file exists
+PUBLIC_PHOTO_LOCAL = "photo1.jpg"     # make sure this file exists
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
@@ -28,44 +24,52 @@ CAPTION_PRIVATE = (
     "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $10 USD\n\n"
     f"⭐ Join here: {INVITE_PRIVATE}"
 )
-
 CAPTION_OTHER = (
     "✨ Candids & Spycams ✨\n\n"
     "Exclusive extras and more content 🔥\n\n"
     f"⭐ Join here: {INVITE_OTHER}"
 )
-
 CAPTION_PUBLIC = (
     "✨ TengokuHub – Public ✨\n"
     "Previews & teasers only. Full collection (400+ models, 125K+ media) in the Private Vault.\n\n"
     f"⭐ Join here: {INVITE_PUBLIC}"
 )
 
-INTRO_MENU = textwrap.dedent("""\
-✨ Welcome to TengokuHub Bot! ✨
+START_FOLLOWUP = textwrap.dedent("""\
+Choose what to check out next ⬇️
 
-🔒 /private — Access the Private Vault
-📂 /other   — Candids & Spycams
-📸 /public  — Public previews
-🗂 /models  — Browse Models list
+📸 Public previews
+📂 Candids & Spycams
+🗂 /models — Browse Models list
 """)
 
 # ====== Keyboards ======
-def kb_private(): return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join", url=INVITE_PRIVATE)]])
-def kb_other():   return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join", url=INVITE_OTHER)]])
-def kb_public():  return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join Public", url=INVITE_PUBLIC)]])
+def kb_private():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join", url=INVITE_PRIVATE)]])
+def kb_other():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join", url=INVITE_OTHER)]])
+def kb_public():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join Public", url=INVITE_PUBLIC)]])
+def kb_start_options():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📸 Public previews", url=INVITE_PUBLIC)],
+        [InlineKeyboardButton("📂 Candids & Spycams (preview)", callback_data="show_other_preview")]
+    ])
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(INTRO_MENU)
+    # 1) Private video first (instant from file_id)
+    file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
+    if not file_id:
+        await update.message.reply_text("⚠️ VIDEO_FILE_ID is not set. Please set it in Railway env.")
+        return
+    await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
+    # 2) Options (no “you’re in”)
+    await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
 
 async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
-    if file_id:
-        await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
-    else:
-        # Fallback to GitHub Release URL until you set VIDEO_FILE_ID
-        await update.message.reply_video(PRIVATE_VIDEO_URL, caption=CAPTION_PRIVATE, reply_markup=kb_private())
+    await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
 
 async def other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open(OTHER_VIDEO_LOCAL, "rb") as f:
@@ -99,27 +103,23 @@ async def crypto_info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await q.message.reply_text(msg, disable_web_page_preview=True, parse_mode="Markdown")
 
-# ====== TEMP LOGGER to capture file_id ======
-# Leave this in until you capture the ID once (then you can remove these 6 lines)
-async def _log_video_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.video:
-        print("[SAVE THIS] VIDEO_FILE_ID =", update.message.video.file_id, flush=True)
+async def show_other_preview_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    with open(OTHER_VIDEO_LOCAL, "rb") as f:
+        await q.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
 
 # ====== MAIN ======
 def main():
     print("Booting bot…", flush=True)
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("private", private_cmd))
     app.add_handler(CommandHandler("other", other_cmd))
     app.add_handler(CommandHandler("public", public_cmd))
     app.add_handler(CommandHandler("models", models_cmd))
     app.add_handler(CallbackQueryHandler(crypto_info_cb, pattern=r"^crypto_info$"))
-
-    # TEMP handler to print VIDEO_FILE_ID when you send promo.mp4 to the bot
-    app.add_handler(MessageHandler(filters.VIDEO, _log_video_id))
-
+    app.add_handler(CallbackQueryHandler(show_other_preview_cb, pattern=r"^show_other_preview$"))
     print("Starting polling…", flush=True)
     app.run_polling(drop_pending_updates=True)
 
