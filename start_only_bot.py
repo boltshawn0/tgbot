@@ -1,14 +1,13 @@
 # start_only_bot.py
-# Telegram bot with:
-# - /start  (shows Private Vault first, then options; Candids button sends teaser2.mp4)
-# - /private (private promo; uses GitHub URL first, then caches Telegram file_id)
+# - /start  (plays Private Vault promo.mov via GitHub URL FIRST, then offers buttons; Candids button sends teaser2)
+# - /private (same as start, URL first -> caches new file_id)
 # - /public  (photo + Join button)
-# - /other   (teaser2.mp4 + Join button)
-# - /models  (loads from models.txt, deduped + alphabetized)
-# - "💳 Pay with Crypto" button -> shows your wallet addresses & DM instruction
-
-import os, sys, textwrap
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, Update
+# - /other   (same as Candids button)
+# - /models  (loads from models.txt)
+# - Crypto button shows wallets
+import os, sys, textwrap, traceback
+from typing import Optional, Union
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, MessageEntity, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import MessageEntityType
 
@@ -19,16 +18,19 @@ INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
 INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
-# ====== MEDIA (URL first for private; local for others) + optional file_id envs ======
-PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov" # not required; only used if URL & file_id fail
-PRIVATE_VIDEO_LOCAL = "teaser.mp4"
+# ====== MEDIA SOURCES ======
+# Private promo from GitHub Release (URL FIRST)
+PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov"
+PRIVATE_VIDEO_LOCAL = None  # we don't want local fallback here at all
 PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
 
+# Candids/Spycams teaser (local or file_id)
 OTHER_VIDEO_LOCAL = "teaser2.mp4"
 OTHER_VIDEO_FILE_ID_ENV = "VIDEO2_FILE_ID"
 
+# Public preview photo (local or file_id)
 PUBLIC_PHOTO_LOCAL = "photo1.jpg"
-PUBLIC_PHOTO_FILE_ID_ENV = "PHOTO1_FILE_ID"
+PUBLIC_PHOTO_FILE_ID_ENV = "
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
