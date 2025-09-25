@@ -1,7 +1,7 @@
 # start_only_bot.py
 # Telegram bot with:
-# - /start (intro menu + private promo)
-# - /private (private promo)
+# - /start  (shows Private Vault first, then options for other channels)
+# - /private (private promo; uses GitHub URL on first send, then caches Telegram file_id)
 # - /public  (photo + Join button)
 # - /other   (teaser2.mp4 + Join button)
 # - /models  (loads from models.txt, deduped + alphabetized)
@@ -15,10 +15,14 @@ from telegram.constants import MessageEntityType
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
-INVITE_PRIVATE = "https://t.me/+pCkQCqhHoOFlZmMx"   # Private (vault)Public channel
-INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Other channel
+# Updated links you provided
+INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
+INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
+INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
 # ====== MEDIA (local fallbacks) + optional file_id envs ======
+# Private promo video (primary source = GitHub Release URL; bot will cache file_id after first send)
+PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mov"
 PRIVATE_VIDEO_LOCAL = "teaser.mp4"
 PRIVATE_VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"
 
@@ -45,13 +49,21 @@ CAPTION_OTHER = (
     "DON'T MISS OUT CURRENTLY 25% OFF!"
 )
 
-INTRO_MENU = textwrap.dedent("""\
-               ✨ Welcome to TengokuHub Bot! ✨
-Choose a command below to explore ⬇️
+CAPTION_PUBLIC = (
+    "✨ TengokuHub – Public ✨\n"
+    "This channel shares previews & teasers only 🔥\n\n"
+    "The full collection (400+ models, 125K+ media) is inside the Private Vault.\n"
+    "Tap below to join the Public channel."
+)
 
-🔒 /private — Access the Private Vault (25% OFF SALE!)
-📂 /other   — Check out our Candid and Spycam Channel (25% OFF SALE!)
-🗂 /models  — Browse the Private Vault Models
+# Shown after the private message on /start
+START_FOLLOWUP = textwrap.dedent("""\
+🔥 You're in!
+
+Want more options?
+• Join Public previews (button below)
+• Join Candids & Spycams (button below)
+• Browse the model list any time with /models
 """)
 
 # ====== Custom emoji IDs (for animated emojis in CAPTION_PRIVATE) ======
@@ -79,9 +91,6 @@ def build_custom_emoji_entities_utf16(text: str):
         offset_utf16 += ch_units
     return ents
 
-def kb_join(url: str, label: str = "⭐ Join"):
-    return InlineKeyboardMarkup([[InlineKeyboardButton(label, url=url)]])
-
 def kb_private():
     # Stars + Crypto-info buttons
     return InlineKeyboardMarkup([
@@ -98,12 +107,28 @@ def kb_other():
 def kb_public():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Join Public", url=INVITE_PUBLIC)]])
 
+def kb_start_options():
+    # Shown after the private promo on /start
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✨ Join Public Previews", url=INVITE_PUBLIC)],
+        [InlineKeyboardButton("📂 Join Candids & Spycams", url=INVITE_OTHER)]
+    ])
+
 # ====== HELPERS ======
-async def send_media(update: Update, caption, file_env, local_path, kind="video", markup=None):
+async def send_media(update: Update, caption, file_env, local_path, kind="video", markup=None, url: str | None = None):
+    """
+    Sends media in priority order:
+    1) Telegram file_id from env
+    2) Direct URL (if provided)
+    3) Local file fallback
+    Logs the file_id after first upload for future speed via Telegram CDN.
+    """
     caption_entities = build_custom_emoji_entities_utf16(caption)
     file_id = os.environ.get(file_env, "").strip()
-    try:
-        if file_id:
+
+    # 1) Try file_id (fastest via Telegram CDN)
+    if file_id:
+        try:
             if kind == "video":
                 return await update.message.reply_video(
                     video=file_id, caption=caption,
@@ -116,9 +141,33 @@ async def send_media(update: Update, caption, file_env, local_path, kind="video"
                     photo=file_id, caption=caption,
                     reply_markup=markup,
                 )
-    except Exception as e:
-        print(f"[{kind} file_id failed] {e}", flush=True)
+        except Exception as e:
+            print(f"[{kind} file_id failed] {e}", flush=True)
 
+    # 2) Try direct URL (e.g., GitHub Release asset)
+    if url:
+        try:
+            if kind == "video":
+                msg = await update.message.reply_video(
+                    video=url, caption=caption,
+                    caption_entities=caption_entities,
+                    reply_markup=markup,
+                    supports_streaming=True,
+                )
+            else:
+                msg = await update.message.reply_photo(
+                    photo=url, caption=caption,
+                    reply_markup=markup,
+                )
+            # Save file_id emitted by Telegram for faster future sends
+            if msg and getattr(msg, kind, None) and getattr(msg, kind).file_id:
+                fid = getattr(msg, kind).file_id
+                print(f"[SAVE THIS] Set {file_env}={fid}", flush=True)
+            return msg
+        except Exception as e:
+            print(f"[{kind} URL failed] {e}", flush=True)
+
+    # 3) Local file fallback
     try:
         with open(local_path, "rb") as f:
             if kind == "video":
@@ -141,10 +190,29 @@ async def send_media(update: Update, caption, file_env, local_path, kind="video"
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(INTRO_MENU)
+    # 1) Lead with the Private Vault promo (video from GitHub URL on first run)
+    await send_media(
+        update,
+        CAPTION_PRIVATE,
+        PRIVATE_VIDEO_FILE_ID_ENV,
+        PRIVATE_VIDEO_LOCAL,
+        "video",
+        kb_private(),
+        url=PRIVATE_VIDEO_URL,
+    )
+    # 2) Then present options for other channels
+    await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
 
 async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_media(update, CAPTION_PRIVATE, PRIVATE_VIDEO_FILE_ID_ENV, PRIVATE_VIDEO_LOCAL, "video", kb_private())
+    await send_media(
+        update,
+        CAPTION_PRIVATE,
+        PRIVATE_VIDEO_FILE_ID_ENV,
+        PRIVATE_VIDEO_LOCAL,
+        "video",
+        kb_private(),
+        url=PRIVATE_VIDEO_URL,
+    )
 
 async def other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_media(update, CAPTION_OTHER, OTHER_VIDEO_FILE_ID_ENV, OTHER_VIDEO_LOCAL, "video", kb_other())
@@ -168,7 +236,6 @@ async def models_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def crypto_info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    # Your 3 addresses + DM instruction
     msg = (
         "💳 *Pay with Crypto ($10)*\n\n"
         "*BTC*: `bc1q4qwnx9dvxczm6kuk084z6dh0ae4c9we8lv6cs2`\n"
