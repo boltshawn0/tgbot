@@ -34,19 +34,6 @@ Choose what to check out next ⬇️
 🗂 /models — Browse Models list
 """)
 
-
-# 1) imports (top of file)
-from telegram.ext import MessageHandler, filters
-
-# 2) temp logger function (anywhere above main())
-async def _log_video_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.video:
-        print("[SAVE THIS] VIDEO_FILE_ID =", update.message.video.file_id, flush=True)
-
-# 3) register it (inside main(), after other handlers)
-app.add_handler(MessageHandler(filters.VIDEO, _log_video_id))
-
-
 # ====== Keyboards ======
 def kb_private():
     return InlineKeyboardMarkup([
