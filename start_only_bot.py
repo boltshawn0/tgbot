@@ -1,5 +1,5 @@
 # start_only_bot.py
-# Final version: VIDEO_FILE_ID (instant), /start guarded, Crypto button on /private and /other.
+# Final version: no Public channel anywhere. VIDEO_FILE_ID (instant CDN), /start guarded, Crypto buttons on /private and /other.
 
 import os, sys, textwrap, time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -10,12 +10,10 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
-INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
 
 # ====== MEDIA ======
-VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"   # must be set in Railway (Telegram file_id)
+VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"   # must be set in Railway (Telegram file_id for promo.mp4)
 OTHER_VIDEO_LOCAL = "teaser2.mp4"     # ensure exists in app dir
-PUBLIC_PHOTO_LOCAL = "photo1.jpg"     # ensure exists in app dir
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
@@ -29,16 +27,10 @@ CAPTION_OTHER = (
     "Exclusive extras and more content 🔥\n\n"
     f"⭐ Join here: {INVITE_OTHER}"
 )
-CAPTION_PUBLIC = (
-    "✨ TengokuHub – Public ✨\n"
-    "Previews & teasers only. Full collection (400+ models, 125K+ media) in the Private Vault.\n\n"
-    f"⭐ Join here: {INVITE_PUBLIC}"
-)
 
 START_FOLLOWUP = textwrap.dedent("""\
 Choose what to check out next ⬇️
 
-📸 Public previews
 📂 Candids & Spycams
 🗂 /models — Browse Models list
 """)
@@ -56,12 +48,9 @@ def kb_other():
         [InlineKeyboardButton("💳 Pay with Crypto ($10)", callback_data="crypto_info")]
     ])
 
-def kb_public():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Join Public", url=INVITE_PUBLIC)]])
-
 def kb_start_options():
+    # Only Candids preview button (no public)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📸 Public previews", url=INVITE_PUBLIC)],
         [InlineKeyboardButton("📂 Candids & Spycams (preview)", callback_data="show_other_preview")]
     ])
 
@@ -74,14 +63,14 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data["last_start_ts"] = now
 
+    # 1) Private video first (instant from file_id)
     file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
     if not file_id:
         await update.message.reply_text("⚠️ VIDEO_FILE_ID is not set. Set it in Railway env.")
         return
-
-    # 1) Private video first (with Stars + Crypto buttons)
     await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
-    # 2) Options (no “you’re in”)
+
+    # 2) Options (no public)
     await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
 
 async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -91,10 +80,6 @@ async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open(OTHER_VIDEO_LOCAL, "rb") as f:
         await update.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
-
-async def public_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with open(PUBLIC_PHOTO_LOCAL, "rb") as f:
-        await update.message.reply_photo(f, caption=CAPTION_PUBLIC, reply_markup=kb_public())
 
 async def models_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -136,7 +121,6 @@ def main():
     app.add_handler(CommandHandler("start", start_cmd, filters=private_only))
     app.add_handler(CommandHandler("private", private_cmd, filters=private_only))
     app.add_handler(CommandHandler("other", other_cmd, filters=private_only))
-    app.add_handler(CommandHandler("public", public_cmd, filters=private_only))
     app.add_handler(CommandHandler("models", models_cmd, filters=private_only))
 
     app.add_handler(CallbackQueryHandler(crypto_info_cb, pattern=r"^crypto_info$"))
