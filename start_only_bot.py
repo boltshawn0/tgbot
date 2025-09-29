@@ -1,18 +1,27 @@
 # start_only_bot.py
-# Final clean version: uses VIDEO_FILE_ID (instant CDN), /start guarded, Crypto button on /private and /other.
-import os, sys, textwrap, time
+# Clean + robust: no Public, Crypto buttons on /private and /other, /start guarded,
+# file_id first (instant), safe fallback to GitHub URL if file_id missing/invalid.
+import os, sys, textwrap, time, traceback
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    MessageHandler,      # <-- added
+    filters,             # <-- already used safely
+)
 
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-
 INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
 # ====== MEDIA ======
-VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"   # must be set in Railway (Telegram file_id)
-OTHER_VIDEO_LOCAL = "teaser2.mp4"     # ensure exists in app dir
+VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"                        # Telegram file_id for promo.mp4
+PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mp4"  # fallback
+OTHER_VIDEO_LOCAL = "teaser2.mp4"                          # ensure exists in app dir
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
@@ -48,10 +57,26 @@ def kb_other():
     ])
 
 def kb_start_options():
-    # Only Candids preview button (no public)
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📂 Candids & Spycams (preview)", callback_data="show_other_preview")]
     ])
+
+# ====== Helpers ======
+def _get_file_id() -> str:
+    return (os.environ.get(VIDEO_FILE_ID_ENV) or "").strip().strip('"').strip("'")
+
+async def _send_private_video(msg, caption: str):
+    file_id = _get_file_id()
+    if file_id:
+        try:
+            return await msg.reply_video(file_id, caption=caption, reply_markup=kb_private())
+        except Exception as e:
+            print(f"[private video] file_id failed: {e}", flush=True)
+    try:
+        return await msg.reply_video(PRIVATE_VIDEO_URL, caption=caption, reply_markup=kb_private())
+    except Exception as e:
+        print(f"[private video] URL fallback failed: {e}", flush=True)
+        return await msg.reply_text("⚠️ Video temporarily unavailable. Please try again shortly.")
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,23 +87,19 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data["last_start_ts"] = now
 
-    file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
-    if not file_id:
-        await update.message.reply_text("⚠️ VIDEO_FILE_ID is not set. Set it in Railway env.")
-        return
-
-    # 1) Private video first (with Stars + Crypto buttons)
-    await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
-    # 2) Options (no public)
+    await _send_private_video(update.message, CAPTION_PRIVATE)
     await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
 
 async def private_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file_id = os.environ.get(VIDEO_FILE_ID_ENV, "").strip()
-    await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
+    await _send_private_video(update.message, CAPTION_PRIVATE)
 
 async def other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with open(OTHER_VIDEO_LOCAL, "rb") as f:
-        await update.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
+    try:
+        with open(OTHER_VIDEO_LOCAL, "rb") as f:
+            await update.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
+    except Exception as e:
+        print(f"[other video] local send failed: {e}", flush=True)
+        await update.message.reply_text("⚠️ Teaser unavailable right now. Please try again.")
 
 async def models_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -107,8 +128,24 @@ async def crypto_info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_other_preview_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    with open(OTHER_VIDEO_LOCAL, "rb") as f:
-        await q.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
+    try:
+        with open(OTHER_VIDEO_LOCAL, "rb") as f:
+            await q.message.reply_video(f, caption=CAPTION_OTHER, reply_markup=kb_other())
+    except Exception as e:
+        print(f"[other preview] local send failed: {e}", flush=True)
+        await q.message.reply_text("⚠️ Teaser unavailable right now. Please try again.")
+
+# ====== TEMP LOGGER (prints file_id to logs when you send a video RAW to this bot) ======
+async def _log_video_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.video:
+        print("[SAVE THIS] VIDEO_FILE_ID =", update.message.video.file_id, flush=True)
+
+# ====== ERROR HANDLER ======
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("=== EXCEPTION ===", flush=True)
+    print("Update:", update, flush=True)
+    print("Error:", repr(context.error), flush=True)
+    traceback.print_exception(type(context.error), context.error, context.error.__traceback__)
 
 # ====== MAIN ======
 def main():
@@ -124,6 +161,11 @@ def main():
 
     app.add_handler(CallbackQueryHandler(crypto_info_cb, pattern=r"^crypto_info$"))
     app.add_handler(CallbackQueryHandler(show_other_preview_cb, pattern=r"^show_other_preview$"))
+
+    # TEMP: capture file_id in logs when you upload promo.mp4 raw to this NEW bot
+    app.add_handler(MessageHandler(filters.VIDEO & private_only, _log_video_id))
+
+    app.add_error_handler(on_error)
 
     print("Starting polling…", flush=True)
     app.run_polling(drop_pending_updates=True)
