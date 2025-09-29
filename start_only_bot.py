@@ -1,3 +1,4 @@
+@@ -1,9 +1,9 @@
 # start_only_bot.py
 # Final clean version: uses VIDEO_FILE_ID (instant CDN), no logger, no URL fallback.
 # Final version: VIDEO_FILE_ID (instant), /start guarded, Crypto button on /private and /other.
@@ -10,7 +11,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # ====== ENV / LINKS ======
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-@@ -13,9 +13,9 @@   # Public previews
+@@ -13,9 +13,9 @@
+INVITE_PUBLIC  = "https://t.me/+l0Tv1KBIXcs5MzFh"   # Public previews
 
 # ====== MEDIA ======
 VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"   # must be set in Railway
@@ -45,7 +47,7 @@ def kb_public():
 def kb_start_options():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📸 Public previews", url=INVITE_PUBLIC)],
-@@ -58,11 +67,19 @@ def kb_start_options():
+@@ -58,11 +67,19 @@
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,7 +69,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_video(file_id, caption=CAPTION_PRIVATE, reply_markup=kb_private())
     # 2) Options (no “you’re in”)
     await update.message.reply_text(START_FOLLOWUP, reply_markup=kb_start_options())
-@@ -113,13 +130,18 @@ async def show_other_preview_cb(update: Update, context: ContextTypes.DEFAULT_TY
+@@ -113,19 +130,24 @@
 def main():
     print("Booting bot…", flush=True)
     app = Application.builder().token(BOT_TOKEN).build()
@@ -90,3 +92,10 @@ def main():
 
     print("Starting polling…", flush=True)
     app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyError as e:
+        print(f"Missing env var: {e}", file=sys.stderr)
+        raise
