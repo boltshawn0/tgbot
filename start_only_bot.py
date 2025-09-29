@@ -39,7 +39,7 @@ CAPTION_OTHER = (
 START_FOLLOWUP = textwrap.dedent("""\
 Choose what to check out next ⬇️
 
-📂 Candids & Spycams
+📂 /other - Candids & Spycams
 🗂 /models — Browse Models list
 """)
 
@@ -58,7 +58,7 @@ def kb_other():
 
 def kb_start_options():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📂 Candids & Spycams (preview)", callback_data="show_other_preview")]
+        [InlineKeyboardButton("📂 Candids & Spycams", callback_data="show_other_preview")]
     ])
 
 # ====== Helpers ======
