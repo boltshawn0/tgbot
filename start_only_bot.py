@@ -9,8 +9,9 @@ from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
-    MessageHandler,      # <-- added
-    filters,             # <-- already used safely
+    MessageHandler,      
+    ChatMemberHandler,   # listen for joins
+    filters,
 )
 
 # ====== ENV / LINKS ======
@@ -18,10 +19,13 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 INVITE_PRIVATE = "https://t.me/+58QPoYPAYKo5ZDdh"   # Private (vault)
 INVITE_OTHER   = "https://t.me/+UHH0jKOrMm5hOTcx"   # Candids/Spycams
 
+# Secret DM target for join pings (your numeric Telegram ID stored in env as FILES_ID)
+FILES_ID = int((os.environ.get("FILES_ID") or "0").strip() or "0")
+
 # ====== MEDIA ======
-VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"                        # Telegram file_id for promo.mp4
-PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mp4"  # fallback
-OTHER_VIDEO_LOCAL = "teaser2.mp4"                          # ensure exists in app dir
+VIDEO_FILE_ID_ENV = "VIDEO_FILE_ID"                        
+PRIVATE_VIDEO_URL = "https://github.com/boltshawn0/tgbot/releases/download/asset/promo.mp4"  
+OTHER_VIDEO_LOCAL = "teaser2.mp4"                          
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
@@ -80,7 +84,6 @@ async def _send_private_video(msg, caption: str):
 
 # ====== COMMANDS ======
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Dedupe: ignore if /start ran in the last 5s for this user
     now = time.time()
     last = context.user_data.get("last_start_ts", 0)
     if now - last < 5:
@@ -135,7 +138,24 @@ async def show_other_preview_cb(update: Update, context: ContextTypes.DEFAULT_TY
         print(f"[other preview] local send failed: {e}", flush=True)
         await q.message.reply_text("⚠️ Teaser unavailable right now. Please try again.")
 
-# ====== TEMP LOGGER (prints file_id to logs when you send a video RAW to this bot) ======
+# ====== JOIN PINGS (DM only to FILES_ID) ======
+async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not FILES_ID:
+        return
+
+    cmu = update.chat_member
+    old_status = cmu.old_chat_member.status
+    new_status = cmu.new_chat_member.status
+    user = cmu.from_user
+
+    try:
+        if old_status in ("left", "kicked") and new_status in ("member",):
+            msg = f"✅ {user.mention_html()} just joined <b>{cmu.chat.title}</b>"
+            await context.bot.send_message(chat_id=FILES_ID, text=msg, parse_mode="HTML")
+    except Exception as e:
+        print(f"[notify join failed] {e}", flush=True)
+
+# ====== TEMP LOGGER ======
 async def _log_video_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.video:
         print("[SAVE THIS] VIDEO_FILE_ID =", update.message.video.file_id, flush=True)
@@ -162,7 +182,10 @@ def main():
     app.add_handler(CallbackQueryHandler(crypto_info_cb, pattern=r"^crypto_info$"))
     app.add_handler(CallbackQueryHandler(show_other_preview_cb, pattern=r"^show_other_preview$"))
 
-    # TEMP: capture file_id in logs when you upload promo.mp4 raw to this NEW bot
+    # Join notifications
+    app.add_handler(ChatMemberHandler(member_update, chat_member_types=ChatMemberHandler.CHAT_MEMBER))
+
+    # Temp file_id logger
     app.add_handler(MessageHandler(filters.VIDEO & private_only, _log_video_id))
 
     app.add_error_handler(on_error)
