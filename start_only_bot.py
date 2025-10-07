@@ -124,7 +124,7 @@ async def crypto_info_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*BTC*: `bc1q4qwnx9dvxczm6kuk084z6dh0ae4c9we8lv6cs2`\n"
         "*ETH*: `0x8ae4799098dbf5dC637d3993E0ad66e977A158A7`\n"
         "*SOL*: `3wmTEKgEFEexCTbsHzKqbUAUePDw7Rcr2KR3TvTyxuCh`\n\n"
-        "After sending, DM *@TengokuGoon* with a screenshot to receive your 1 month invite link."
+        "After sending, DM *@TengokusHub* with a screenshot to receive your 1 month invite link."
     )
     await q.message.reply_text(msg, disable_web_page_preview=True, parse_mode="Markdown")
 
