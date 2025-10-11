@@ -29,7 +29,7 @@ OTHER_VIDEO_LOCAL = "teaser2.mp4"
 
 # ====== CAPTIONS ======
 CAPTION_PRIVATE = (
-    "🔒 400+ Models | 125,000+ Media 📁\n"
+    "🔒 500+ Models | 150,000+ Media 📁\n"
     "ALL FULLY POSTED IN PRIVATE TELEGRAM VAULT 🔥🔥🔥\n\n"
     "🗓 MONTHLY SUBSCRIPTION — 500 STARS / $10 USD\n\n"
     f"⭐ Join here: {INVITE_PRIVATE}"
@@ -50,14 +50,14 @@ Choose what to check out next ⬇️
 # ====== Keyboards ======
 def kb_private():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⭐ Join via Stars", url=INVITE_PRIVATE)],
-        [InlineKeyboardButton("💳 Pay with Crypto ($10)", callback_data="crypto_info")]
+        [InlineKeyboardButton("⭐ Join via Stars (25% OFF!!)", url=INVITE_PRIVATE)],
+        [InlineKeyboardButton("💳 Pay with Crypto ($10) (25% OFF!!)", callback_data="crypto_info")]
     ])
 
 def kb_other():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⭐ Join via Stars", url=INVITE_OTHER)],
-        [InlineKeyboardButton("💳 Pay with Crypto ($10)", callback_data="crypto_info")]
+        [InlineKeyboardButton("⭐ Join via Stars (25% OFF!!)", url=INVITE_OTHER)],
+        [InlineKeyboardButton("💳 Pay with Crypto ($10) (25% OFF!!)", callback_data="crypto_info")]
     ])
 
 def kb_start_options():
